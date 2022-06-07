@@ -3,8 +3,26 @@ from sensirion_shdlc_sensorbridge import SensorBridgePort, SensorBridgeShdlcDevi
 from sensirion_i2c_driver import I2cConnection
 from sensirion_i2c_sht.sht3x import Sht3xI2cDevice
 from threading import RLock
+import serial.tools.list_ports
 
 # Code from Sensirion https://github.com/Sensirion/python-i2c-sht
+
+def find_sensirion_serial_devices():
+	"""Find all the Sensirion devices connected via USB to your computer.
+	
+	Returns
+	-------
+	devices_found: list
+		A list of the form:
+		```
+		[
+			{'manufacturer': str, 'description': str, 'port': str, 'serial_number': str}, # Device 1
+			{'manufacturer': str, 'description': str, 'port': str, 'serial_number': str}, # Device 2
+			...
+		]
+		```
+	"""
+	return [{'manufacturer': p.manufacturer, 'description': p.description, 'port': p.device, 'serial_number': p.serial_number} for p in serial.tools.list_ports.comports() if 'sensirion' == p.manufacturer.lower()]
 
 class SensirionSensor:
 	"""
@@ -14,13 +32,20 @@ class SensirionSensor:
 	[2] https://www.sensirion.com/en/environmental-sensors/evaluation-kit-sek-environmental-sensing/
 	
 	NOTE: Before I was able to make this work, I had to open the graphical interface downloadable here https://www.sensirion.com/en/controlcenter/ and after this the computer was able to "detect" the `\dev\ttyUSB0`. I think it is a permission issue which is automatically solved by their software."""
-	def __init__(self, bridge_port=1, port='/dev/ttyUSB0', baudrate=460800):
+	def __init__(self, bridge_port=1, port=None, baudrate=460800):
 		"""Arguments:
 		- bridge_port: int, either 1 or 2 depending on which output of the bridge you connect your sensor.
-		- port: str, the port where the sensor bridge is available, e.g. in Linux '/dev/ttyUSB0'.
+		- port: str, the port where the sensor bridge is available, e.g. in Linux '/dev/ttyUSB0'. If `None`, will try to autodetect.
 		
-		To find what you should put in the `port` argument, in Linux you can use this https://unix.stackexchange.com/questions/144029/command-to-determine-ports-of-a-device-like-dev-ttyusb0/144735#144735"""
-		port = ShdlcSerialPort(port='/dev/ttyUSB0', baudrate=460800)
+		To find what you should put in the `port` argument, in Linux you
+		can use this https://unix.stackexchange.com/questions/144029/command-to-determine-ports-of-a-device-like-dev-ttyusb0/144735#144735
+		"""
+		connected_sensirion_devices = find_sensirion_serial_devices()
+		if port is None and len(connected_sensirion_devices) == 1:
+			port = connected_sensirion_devices[0]['port']
+		else:
+			raise ValueError(f'Please provide a `port` where to find the device.')
+		port = ShdlcSerialPort(port=port, baudrate=baudrate)
 		bridge = SensorBridgeShdlcDevice(ShdlcConnection(port), slave_address=0)
 		# Configure SensorBridge port 1 for SHT3x
 		if bridge_port not in {1,2}:
