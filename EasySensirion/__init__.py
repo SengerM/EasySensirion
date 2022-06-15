@@ -26,27 +26,33 @@ def find_sensirion_serial_devices():
 
 class SensirionSensor:
 	"""
-	This class was created to wrap and ease the use of the example in this link: https://sensirion.github.io/python-i2c-sht/quickstart.html. It is to be used to control one SHT3x [1] sensor connected to a SEK Sensor Bridge [2]. For this to work, connect the sensor to the "port 1" in the sensor bridge and then the sensor bridge with the USB to the computer. 
-	
+	This class was created to wrap and ease the use of the example in [this link](https://sensirion.github.io/python-i2c-sht/quickstart.html). 
+	It is to be used to control one SHT3x [1] sensor connected to a SEK 
+	Sensor Bridge [2].
+		
 	[1] https://www.sensirion.com/en/environmental-sensors/humidity-sensors/digital-humidity-sensors-for-various-applications/
 	[2] https://www.sensirion.com/en/environmental-sensors/evaluation-kit-sek-environmental-sensing/
 	
-	NOTE: Before I was able to make this work, I had to open the graphical interface downloadable here https://www.sensirion.com/en/controlcenter/ and after this the computer was able to "detect" the `\dev\ttyUSB0`. I think it is a permission issue which is automatically solved by their software."""
+	NOTE: Before I was able to make this work, I had to open the graphical 
+	interface downloadable here https://www.sensirion.com/en/controlcenter/ 
+	and after this the computer was able to "detect" the `\dev\ttyUSB0`. 
+	I think it is a permission issue which is automatically solved by 
+	their software.
+	"""
 	def __init__(self, bridge_port=1, port=None, baudrate=460800):
 		"""Arguments:
 		- bridge_port: int, either 1 or 2 depending on which output of the bridge you connect your sensor.
 		- port: str, the port where the sensor bridge is available, e.g. in Linux '/dev/ttyUSB0'. If `None`, will try to autodetect.
-		
-		To find what you should put in the `port` argument, in Linux you
-		can use this https://unix.stackexchange.com/questions/144029/command-to-determine-ports-of-a-device-like-dev-ttyusb0/144735#144735
 		"""
 		connected_sensirion_devices = find_sensirion_serial_devices()
 		if port is None and len(connected_sensirion_devices) == 1:
 			port = connected_sensirion_devices[0]['port']
 		else:
 			raise ValueError(f'Please provide a `port` where to find the device.')
-		port = ShdlcSerialPort(port=port, baudrate=baudrate)
-		bridge = SensorBridgeShdlcDevice(ShdlcConnection(port), slave_address=0)
+		if port not in [device['port'] for device in connected_sensirion_devices]:
+			raise RuntimeError(f'Cannot find Sensirion device in port {repr(port)}.')
+		self._port = port
+		bridge = SensorBridgeShdlcDevice(ShdlcConnection(ShdlcSerialPort(port=port, baudrate=baudrate)), slave_address=0)
 		# Configure SensorBridge port 1 for SHT3x
 		if bridge_port not in {1,2}:
 			raise ValueError(f'`bridge_port` must be 1 or 2, received {repr(bridge_port)}.')
@@ -74,6 +80,15 @@ class SensirionSensor:
 	def humidity(self):
 		"""Returns a single reading of the humidity in %RH as a float number."""
 		return self.measure()['Humidity (%RH)']
+	
+	@property
+	def idn(self):
+		"""Returns a string with information of the device."""
+		if not hasattr(self, '_idn'):
+			devices = find_sensirion_serial_devices()
+			i = [d['port'] for d in devices].index(self._port)
+			self._idn = f'{devices[i]["manufacturer"]},SN:{devices[i]["serial_number"]}'
+		return self._idn
 
 if __name__ == '__main__':
 	# Example program.
